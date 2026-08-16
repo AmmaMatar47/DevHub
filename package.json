@@ -9,11 +9,17 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "typecheck": "tsc -b --noEmit"
+    "typecheck": "tsc -b --noEmit",
+    "db:types": "supabase gen types typescript --linked > src/types/database.types.ts",
+    "db:reset": "supabase db reset",
+    "db:diff": "supabase db diff",
+    "db:push": "supabase db push"
   },
   "dependencies": {
     "@chakra-ui/react": "^3.36.1",
     "@emotion/react": "^11.14.0",
+    "@supabase/supabase-js": "^2.112.3",
+    "@tanstack/react-query": "^5.101.4",
     "lucide-react": "^1.31.0",
     "next-themes": "^0.4.6",
     "react": "^19.2.8",
