@@ -19,6 +19,7 @@ dist-ssr
 
 # Local tooling
 .claude/
+.mcp.json
 
 # Editor directories and files
 .vscode/*

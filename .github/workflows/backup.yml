@@ -1,0 +1,32 @@
+name: Nightly Supabase backup
+
+# The free plan has no automated backups. This is the only copy -- if it
+# stops running silently, restoring from a point in time is not possible.
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install postgresql-client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Dump database
+        run: |
+          pg_dump "${SUPABASE_DB_URL}" \
+            --no-owner --no-privileges --format=custom \
+            --file="devhub-$(date -u +%Y-%m-%dT%H-%M-%SZ).dump"
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+
+      - name: Upload backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: devhub-db-backup-${{ github.run_id }}
+          path: '*.dump'
+          retention-days: 30
