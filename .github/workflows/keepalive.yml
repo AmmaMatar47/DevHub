@@ -1,0 +1,28 @@
+name: Keep Supabase project alive
+
+# Free-plan Supabase projects pause after ~7 days with no API activity.
+# Running every 4 days keeps well inside that window. Day-of-month cron
+# steps ("*/4") drift slightly across month boundaries -- fine here since
+# we only need "well under 7 days", not an exact interval.
+on:
+  schedule:
+    - cron: '0 3 */4 * *'
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping REST API
+        run: |
+          status=$(curl -s -o /dev/null -w '%{http_code}' \
+            "${SUPABASE_URL}/rest/v1/" \
+            -H "apikey: ${SUPABASE_ANON_KEY}")
+          echo "Response status: $status"
+          if [ "$status" -ge 300 ]; then
+            echo "Unexpected status from Supabase REST API"
+            exit 1
+          fi
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
