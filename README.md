@@ -2,9 +2,8 @@
 
 DevHub is the team's internal learning and knowledge platform — a home for articles, quizzes with
 spaced repetition, reusable code snippets, and search, built for a six-person development team.
-This milestone (**M0**) is the project scaffold only: a running, themed application shell with a
-fully-built home page and every other route stubbed out. There is no backend, no authentication,
-and no data layer yet — those arrive in later milestones.
+The app shell, Supabase data layer, and authentication have landed; the documentation tree UI,
+content rendering, and editor are still ahead.
 
 ## Getting started
 
@@ -118,3 +117,22 @@ Run this from the Supabase SQL editor or a direct `psql` connection — **never*
 that arrives through a real PostgREST request unless the caller is already an admin, precisely to
 stop a member from granting themselves admin. Direct SQL access has no such request context, which
 is what makes it the only way to create the first admin at all.
+
+## Contributing
+
+There's no deployed environment — all testing happens on localhost — so the branch model is
+deliberately flat:
+
+```
+main      → the only long-lived branch. Protected.
+             PRs merge here, but ONLY on explicit instruction from the user
+             after they have tested locally. Never push directly. Never
+             self-merge.
+feat/*    → cut from main, PR back into main.
+fix/*     → same.
+chore/*   → same.
+```
+
+Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`,
+`fix:`, `chore:`, `docs:`, ...), branch names are kebab-case, and commits are grouped into logical
+units rather than one giant diff per PR.
