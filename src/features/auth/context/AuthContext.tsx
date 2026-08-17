@@ -59,17 +59,23 @@ export function AuthProvider({ children }: PropsWithChildren) {
     isActive,
   })
 
-  // is_active is a deactivation. Checked here so it applies uniformly on
-  // bootstrap (a stale-but-valid session for an account deactivated since
-  // last visit) and on any later refetch, not only at sign-in time.
-  // RequireAuth handles the actual redirect once status flips to
-  // 'unauthenticated' -- this just signs out and records why.
+  // is_active is a UX nicety here, not the security boundary — the database
+  // enforces it via is_enabled() in every RLS policy (and a trigger that
+  // revokes the user's auth.sessions rows on deactivation), so a stale or
+  // bypassed client check can never grant real access. This just signs the
+  // user out immediately and gives a clear reason instead of an app that
+  // silently starts returning empty results everywhere. Checked here so it
+  // applies uniformly on bootstrap (a stale-but-valid session for an account
+  // deactivated since last visit) and on any later refetch, not only at
+  // sign-in time. RequireAuth handles the actual redirect once status flips
+  // to 'unauthenticated' -- this just signs out and records why.
   const [deactivatedNotice, setDeactivatedNotice] = useState(false)
 
   useEffect(() => {
     if (profile && !profile.is_active) {
-      // Paired with the signOut side effect below, which has to run in an
-      // effect regardless -- recording why alongside it is the natural place.
+      // dismissDeactivatedNotice() updates AuthProvider's state from LoginPage,
+      // a different component -- that has to happen post-commit in an effect,
+      // not during render, so this setState is intentionally paired with it.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setDeactivatedNotice(true)
       void signOut.mutateAsync()
@@ -79,15 +85,21 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
   // Role reconciliation: profiles.role can be ahead of the JWT's user_role
   // claim, since a role change doesn't reach the token until it refreshes.
-  // One refresh attempt to catch up; if that doesn't resolve it, surface a
-  // non-blocking notice instead of retrying forever.
-  const jwtRole = session ? ((decodeJwtPayload(session.access_token)?.user_role as UserRole | undefined) ?? null) : null
+  // Decoding the JWT and comparing both live entirely inside this effect
+  // (keyed on session and profile.role, the two source values) rather than
+  // during render, so a re-render for an unrelated reason never re-decodes
+  // the token or re-runs the comparison for no reason. One refreshSession()
+  // attempt to catch up; if that doesn't resolve it, surface a non-blocking
+  // notice instead of retrying forever.
   const profileRole = profile?.role ?? null
   const attemptedRefresh = useRef(false)
   const [roleMismatch, setRoleMismatch] = useState(false)
 
   useEffect(() => {
-    if (!profileRole || !jwtRole) return
+    if (!session || !profileRole) return
+
+    const jwtRole = (decodeJwtPayload(session.access_token)?.user_role as UserRole | undefined) ?? null
+    if (!jwtRole) return
 
     if (profileRole === jwtRole) {
       attemptedRefresh.current = false
@@ -102,7 +114,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     } else {
       setRoleMismatch(true)
     }
-  }, [profileRole, jwtRole])
+  }, [session, profileRole])
 
   return (
     <AuthContext.Provider
