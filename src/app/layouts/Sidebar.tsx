@@ -1,7 +1,8 @@
-import { Box, Flex, Text } from '@chakra-ui/react'
-import { NavLink } from 'react-router-dom'
-import { Code2, HelpCircle, Home, RotateCcw, type LucideIcon } from 'lucide-react'
+import { Box, Flex, IconButton, Text } from '@chakra-ui/react'
+import { Link as RouterLink, NavLink } from 'react-router-dom'
+import { Code2, HelpCircle, Home, RotateCcw, X, type LucideIcon } from 'lucide-react'
 import { DocTreeNav } from '@/features/docs/components/DocTreeNav'
+import { Logo } from '@/shared/components/Logo'
 
 interface NavItem {
   label: string
@@ -18,6 +19,12 @@ const mainNav: NavItem[] = [
   { label: 'Snippets', to: '/snippets', icon: Code2 },
 ]
 
+interface SidebarProps {
+  /** Only passed inside the mobile Drawer -- renders a close button inline
+   * with the logo row instead of the drawer stacking one above it. */
+  onClose?: () => void
+}
+
 /**
  * The four nav items are fixed at the top and never scroll -- the doc tree
  * below them can be any size and gets its own independent scroll container
@@ -25,28 +32,26 @@ const mainNav: NavItem[] = [
  * off-screen. Used as-is inside the mobile Drawer too; there is no second
  * nav component to keep in sync.
  */
-export function Sidebar() {
+export function Sidebar({ onClose }: SidebarProps) {
   return (
     <Flex direction="column" h="full">
       <Flex direction="column" flexShrink={0} pt={5} pb={3} gap={4}>
-        <Flex align="center" gap={2} px={5}>
-          <Flex
-            align="center"
-            justify="center"
-            boxSize="7"
-            borderRadius="l1"
-            bg="accent.solid"
-            color="accent.contrast"
-            fontFamily="mono"
-            fontWeight="600"
-            fontSize="sm"
-            flexShrink={0}
-          >
-            D
-          </Flex>
-          <Text fontWeight="600" fontSize="md" letterSpacing="-0.01em">
-            DevHub
-          </Text>
+        <Flex align="center" justify="space-between" gap={2} pl={5} pr={onClose ? 2 : 5}>
+          <RouterLink to="/" style={{ textDecoration: 'none' }} onClick={onClose}>
+            <Flex align="center" gap={2.5} color="fg.default">
+              <Flex flexShrink={0}>
+                <Logo size={24} />
+              </Flex>
+              <Text fontWeight="600" fontSize="md" letterSpacing="-0.01em" lineHeight="1">
+                DevHub
+              </Text>
+            </Flex>
+          </RouterLink>
+          {onClose ? (
+            <IconButton aria-label="Close navigation" variant="ghost" size="sm" onClick={onClose}>
+              <X size={18} />
+            </IconButton>
+          ) : null}
         </Flex>
 
         <Flex direction="column" gap={1} px={3}>

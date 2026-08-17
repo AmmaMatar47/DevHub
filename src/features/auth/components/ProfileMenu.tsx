@@ -1,6 +1,7 @@
 import { Flex, Menu, Portal, Text } from '@chakra-ui/react'
 import { LogOut, Settings } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { EditModeMenuItem } from '@/features/docs/components/EditModeMenuItem'
 import { useAuth } from '../context/AuthContext'
 import { useSignOut } from '../api/useSignOut'
 import { getInitials } from '../lib/initials'
@@ -62,6 +63,7 @@ export function ProfileMenu() {
               <Settings size={15} />
               Settings
             </Menu.Item>
+            <EditModeMenuItem />
             <Menu.Separator borderColor="border.default" />
             <Menu.Item
               value="sign-out"

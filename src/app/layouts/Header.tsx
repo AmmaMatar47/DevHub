@@ -2,12 +2,15 @@ import { Box, Flex, IconButton, Input } from '@chakra-ui/react'
 import { Menu as MenuIcon, Search } from 'lucide-react'
 import { ColorModeToggle } from '@/shared/components/ColorModeToggle'
 import { ProfileMenu } from '@/features/auth/components/ProfileMenu'
+import { useEditMode } from '@/features/docs/context/EditModeContext'
 
 interface HeaderProps {
   onMenuClick: () => void
 }
 
 export function Header({ onMenuClick }: HeaderProps) {
+  const { editMode } = useEditMode()
+
   return (
     <Flex
       as="header"
@@ -15,12 +18,11 @@ export function Header({ onMenuClick }: HeaderProps) {
       gap={3}
       h={{ base: '56px', lg: '64px' }}
       px={{ base: 4, lg: 8 }}
-      borderBottomWidth="1px"
-      borderColor="border.default"
+      borderBottomWidth={editMode ? '2px' : '1px'}
+      borderBottomColor={editMode ? 'accent.solid' : 'border.default'}
       bg="bg.canvas"
-      position="sticky"
-      top={0}
-      zIndex="1"
+      flexShrink={0}
+      transition="border-color 150ms, border-bottom-width 150ms"
     >
       <IconButton
         aria-label="Open navigation"
