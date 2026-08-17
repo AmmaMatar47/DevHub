@@ -1,15 +1,19 @@
 import { Flex, Menu, Portal, Text } from '@chakra-ui/react'
-import { LogOut } from 'lucide-react'
+import { LogOut, Settings } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useSignOut } from '../api/useSignOut'
 import { getInitials } from '../lib/initials'
 import { RoleBadge } from './RoleBadge'
 
 /** Real profile menu replacing M0's placeholder avatar. RequireAuth handles the
- * post-sign-out redirect automatically once status flips to unauthenticated. */
+ * post-sign-out redirect automatically once status flips to unauthenticated.
+ * Settings lives here rather than in the main nav -- keeping it in both
+ * places would just be clutter. */
 export function ProfileMenu() {
   const { profile, session } = useAuth()
   const signOut = useSignOut()
+  const navigate = useNavigate()
 
   if (!profile) return null
 
@@ -53,6 +57,11 @@ export function ProfileMenu() {
               ) : null}
               <RoleBadge role={profile.role} />
             </Flex>
+            <Menu.Separator borderColor="border.default" />
+            <Menu.Item value="settings" onClick={() => void navigate('/settings')} _hover={{ bg: 'bg.subtle' }}>
+              <Settings size={15} />
+              Settings
+            </Menu.Item>
             <Menu.Separator borderColor="border.default" />
             <Menu.Item
               value="sign-out"
