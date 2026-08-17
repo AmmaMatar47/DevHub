@@ -7,7 +7,7 @@
 -- the fixture users/nodes created here never persist.
 
 begin;
-select plan(23);
+select plan(25);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: one member, one editor, one admin; a published root, a draft
@@ -254,6 +254,21 @@ select is(
   (select count(*)::int from public.doc_nodes where id = 'aaaaaaaa-0000-0000-0000-000000000007'),
   0,
   'a deactivated user cannot read a published doc_node'
+);
+
+-- profiles_select_own / profiles_select_others_when_enabled (M3 Part 0.1):
+-- own row stays readable even while deactivated -- otherwise the client
+-- can't explain why the user was signed out -- but nobody else's row does.
+select is(
+  (select count(*)::int from public.profiles where id = '44444444-4444-4444-4444-444444444444'),
+  1,
+  'a deactivated user can still read their own profile row'
+);
+
+select is(
+  (select count(*)::int from public.profiles where id != '44444444-4444-4444-4444-444444444444'),
+  0,
+  'a deactivated user cannot read anyone else''s profile row'
 );
 
 select lives_ok(
