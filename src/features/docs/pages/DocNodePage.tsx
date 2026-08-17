@@ -19,7 +19,10 @@ interface DocNodePageProps {
 /** A resolved node: full markdown content if it has any, otherwise an index
  * of its children -- a section with no content of its own is never a blank page. */
 export function DocNodePage({ tree, node }: DocNodePageProps) {
-  const ancestors = getAncestorChain(tree, node)
+  // getAncestorChain is inclusive of `node` itself (DocTreeNav's auto-expand
+  // wants that, so the current node's own children reveal too) -- Breadcrumbs
+  // renders `current` separately, so drop the last entry here or it doubles up.
+  const ancestors = getAncestorChain(tree, node).slice(0, -1)
   const { data: full, isPending, isError, refetch } = useDocNode(node.id)
   const contentRef = useRef<HTMLDivElement>(null)
 
@@ -47,7 +50,7 @@ export function DocNodePage({ tree, node }: DocNodePageProps) {
       ) : full.content_md ? (
         <Flex align="start" gap={8}>
           <Box flex="1" minW={0}>
-            <DocPageHeader node={full} />
+            <DocPageHeader node={full} path={node.path} />
             <Box ref={contentRef}>
               <MarkdownContent content={full.content_md} />
             </Box>
@@ -57,7 +60,7 @@ export function DocNodePage({ tree, node }: DocNodePageProps) {
         </Flex>
       ) : (
         <>
-          <DocPageHeader node={full} />
+          <DocPageHeader node={full} path={node.path} />
           {node.children.length > 0 ? (
             <SectionIndex nodes={node.children} />
           ) : (
