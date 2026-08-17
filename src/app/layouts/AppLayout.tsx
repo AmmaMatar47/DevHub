@@ -1,7 +1,6 @@
-import { Box, Drawer, Flex, IconButton, Portal } from '@chakra-ui/react'
+import { Box, Drawer, Flex, Portal } from '@chakra-ui/react'
 import { useEffect, useState } from 'react'
 import { Outlet } from 'react-router-dom'
-import { X } from 'lucide-react'
 import { RoleMismatchBanner } from '@/features/auth/components/RoleMismatchBanner'
 import { Header } from './Header'
 import { Sidebar } from './Sidebar'
@@ -61,15 +60,8 @@ export function AppLayout() {
         <Portal>
           <Drawer.Positioner>
             <Drawer.Content bg="bg.surface" maxW="280px" boxShadow="lg">
-              <Flex justify="flex-end" p={2}>
-                <Drawer.CloseTrigger asChild>
-                  <IconButton aria-label="Close navigation" variant="ghost" size="sm">
-                    <X size={18} />
-                  </IconButton>
-                </Drawer.CloseTrigger>
-              </Flex>
-              <Box as="nav" aria-label="Primary" onClick={() => setDrawerOpen(false)} h="calc(100dvh - 48px)">
-                <Sidebar />
+              <Box as="nav" aria-label="Primary" h="full" onClick={() => setDrawerOpen(false)}>
+                <Sidebar onClose={() => setDrawerOpen(false)} />
               </Box>
             </Drawer.Content>
           </Drawer.Positioner>
