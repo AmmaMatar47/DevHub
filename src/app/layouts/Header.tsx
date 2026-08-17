@@ -2,7 +2,6 @@ import { Box, Flex, IconButton, Input } from '@chakra-ui/react'
 import { Menu as MenuIcon, Search } from 'lucide-react'
 import { ColorModeToggle } from '@/shared/components/ColorModeToggle'
 import { ProfileMenu } from '@/features/auth/components/ProfileMenu'
-import { EditModeToggle } from '@/features/docs/components/EditModeToggle'
 import { useEditMode } from '@/features/docs/context/EditModeContext'
 
 interface HeaderProps {
@@ -60,7 +59,6 @@ export function Header({ onMenuClick }: HeaderProps) {
       </Box>
 
       <Flex align="center" gap={3} ml="auto">
-        <EditModeToggle />
         <ColorModeToggle />
         <ProfileMenu />
       </Flex>
