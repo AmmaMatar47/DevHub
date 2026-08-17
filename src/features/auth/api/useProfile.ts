@@ -21,5 +21,12 @@ export function useProfile(userId: string | undefined) {
       return data
     },
     enabled: userId !== undefined,
+    // A row that changes maybe monthly doesn't need refetching on every
+    // mount. The database enforces is_active/role via is_enabled() and the
+    // JWT regardless of how stale this client copy gets, so the only cost
+    // of a longer staleTime is a deactivated/role-changed user seeing stale
+    // chrome for up to a minute while their actual queries already return
+    // nothing/reflect the new role -- not a security tradeoff.
+    staleTime: 60_000,
   })
 }
