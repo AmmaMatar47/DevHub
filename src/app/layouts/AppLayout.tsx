@@ -15,7 +15,7 @@ export function AppLayout() {
         as="nav"
         aria-label="Primary"
         display={{ base: 'none', md: 'block' }}
-        w={{ md: '72px', lg: '240px' }}
+        w="240px"
         flexShrink={0}
         borderRightWidth="1px"
         borderColor="border.default"
@@ -40,8 +40,8 @@ export function AppLayout() {
                   </IconButton>
                 </Drawer.CloseTrigger>
               </Flex>
-              <Box as="nav" aria-label="Primary" onClick={() => setDrawerOpen(false)}>
-                <Sidebar forceExpanded />
+              <Box as="nav" aria-label="Primary" onClick={() => setDrawerOpen(false)} h="calc(100dvh - 48px)">
+                <Sidebar />
               </Box>
             </Drawer.Content>
           </Drawer.Positioner>

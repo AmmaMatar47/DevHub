@@ -15,6 +15,15 @@ const config = defineConfig({
       outlineColor: 'accent.solid',
       outlineOffset: '2px',
     },
+    // Shiki dual-theme output (src/lib/markdown/CodeBlock.tsx) ships both
+    // palettes as CSS variables per token; these rules pick the right one
+    // per color mode without a re-highlight on toggle.
+    '.shiki, .shiki span': {
+      color: 'var(--shiki-light)',
+    },
+    '.dark .shiki, .dark .shiki span': {
+      color: 'var(--shiki-dark)',
+    },
   },
   theme: {
     tokens: {
