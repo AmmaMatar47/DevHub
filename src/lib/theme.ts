@@ -15,6 +15,26 @@ const config = defineConfig({
       outlineColor: 'accent.solid',
       outlineOffset: '2px',
     },
+    // Thin, theme-colored scrollbars everywhere (sidebar tree, main content,
+    // code blocks, dialogs) instead of each browser's bulky OS-default bar.
+    '*': {
+      scrollbarWidth: 'thin',
+      scrollbarColor: 'var(--chakra-colors-border-strong) transparent',
+    },
+    '*::-webkit-scrollbar': {
+      width: '8px',
+      height: '8px',
+    },
+    '*::-webkit-scrollbar-track': {
+      backgroundColor: 'transparent',
+    },
+    '*::-webkit-scrollbar-thumb': {
+      backgroundColor: 'border.strong',
+      borderRadius: '9999px',
+    },
+    '*::-webkit-scrollbar-thumb:hover': {
+      backgroundColor: 'fg.subtle',
+    },
     // Shiki dual-theme output (src/lib/markdown/CodeBlock.tsx) ships both
     // palettes as CSS variables per token; these rules pick the right one
     // per color mode without a re-highlight on toggle.
@@ -115,6 +135,11 @@ const config = defineConfig({
         error: { value: '{colors.error}' },
         warning: { value: '{colors.warning}' },
         info: { value: '{colors.info}' },
+        // Translucent backgrounds for inline diff highlighting (added/removed
+        // lines in the version-history diff) -- same alpha-blend convention
+        // as accent.subtle, so they read consistently in both color modes.
+        successSubtle: { value: 'rgba(47, 133, 90, 0.12)' },
+        errorSubtle: { value: 'rgba(197, 48, 48, 0.12)' },
       },
     },
   },

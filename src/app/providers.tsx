@@ -3,6 +3,7 @@ import { RouterProvider } from 'react-router-dom'
 import { Provider } from '@/shared/ui/provider'
 import { ErrorBoundary } from '@/shared/components/ErrorBoundary'
 import { AuthProvider } from '@/features/auth/context/AuthContext'
+import { EditModeProvider } from '@/features/docs/context/EditModeContext'
 import { router } from './router'
 
 const queryClient = new QueryClient()
@@ -13,7 +14,9 @@ export function Providers() {
       <Provider>
         <ErrorBoundary>
           <AuthProvider>
-            <RouterProvider router={router} />
+            <EditModeProvider>
+              <RouterProvider router={router} />
+            </EditModeProvider>
           </AuthProvider>
         </ErrorBoundary>
       </Provider>
