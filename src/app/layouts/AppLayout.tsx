@@ -2,6 +2,7 @@ import { Box, Drawer, Flex, IconButton, Portal } from '@chakra-ui/react'
 import { useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { X } from 'lucide-react'
+import { RoleMismatchBanner } from '@/features/auth/components/RoleMismatchBanner'
 import { Header } from './Header'
 import { Sidebar } from './Sidebar'
 
@@ -49,6 +50,7 @@ export function AppLayout() {
 
       <Flex direction="column" flex="1" minW={0}>
         <Header onMenuClick={() => setDrawerOpen(true)} />
+        <RoleMismatchBanner />
         <Box as="main" flex="1" w="full">
           <Box maxW="1200px" mx="auto" w="full" p={{ base: 4, md: 6, lg: 8 }}>
             <Outlet />

@@ -1,6 +1,7 @@
 import { Box, Flex, IconButton, Input } from '@chakra-ui/react'
 import { Menu as MenuIcon, Search } from 'lucide-react'
 import { ColorModeToggle } from '@/shared/components/ColorModeToggle'
+import { ProfileMenu } from '@/features/auth/components/ProfileMenu'
 
 interface HeaderProps {
   onMenuClick: () => void
@@ -57,22 +58,7 @@ export function Header({ onMenuClick }: HeaderProps) {
 
       <Flex align="center" gap={3} ml="auto">
         <ColorModeToggle />
-        <Flex
-          align="center"
-          justify="center"
-          boxSize="8"
-          borderRadius="l2"
-          bg="bg.subtle"
-          borderWidth="1px"
-          borderColor="border.default"
-          fontFamily="mono"
-          fontSize="xs"
-          fontWeight="500"
-          color="fg.muted"
-          flexShrink={0}
-        >
-          JT
-        </Flex>
+        <ProfileMenu />
       </Flex>
     </Flex>
   )
