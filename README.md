@@ -71,6 +71,32 @@ Colour mode (light / dark / system) is handled by `next-themes`, wired up in
 
 ## Supabase
 
-Deliberately not present yet. `.env.example` documents the two variables (`VITE_SUPABASE_URL`,
-`VITE_SUPABASE_ANON_KEY`) that a later milestone will introduce, but no Supabase client, types, or
-auth code exists in this codebase.
+The data layer landed in M1: a Supabase client (`src/lib/supabase.ts`), the `profiles`/`doc_nodes`/
+`doc_versions`/`tags` schema, and Row Level Security on every table. Copy `.env.example` to
+`.env.local` and fill in `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` from your project's
+Settings > API page. `pnpm supabase login` once, then `pnpm supabase link` to work with migrations
+locally (`db:reset`, `db:diff`, `db:push`, `db:types`).
+
+**Signup is invite-only.** New team members are created from the Supabase dashboard
+(Authentication > Users > Invite), never through public signup — `auth.enable_signup` is `false` in
+`supabase/config.toml`. Every new `auth.users` row gets a matching `profiles` row automatically
+(role `member`, `display_name` falling back to the email's local-part when no name is set on the
+account) via the `handle_new_user` trigger.
+
+### Bootstrapping the first admin
+
+Every role after the first has to be granted by an existing admin through the app — but the very
+first admin has no admin to ask. Promote them directly against the database instead:
+
+```sql
+update public.profiles
+set role = 'admin'
+where id = '<their auth.users id, from the dashboard>';
+```
+
+Run this from the Supabase SQL editor or a direct `psql` connection — **never** through the API
+(the `anon`/`authenticated` REST endpoints, or a client-side call). This isn't optional: the
+`prevent_profile_privilege_escalation` trigger deliberately blocks any role or `is_active` change
+that arrives through a real PostgREST request unless the caller is already an admin, precisely to
+stop a member from granting themselves admin. Direct SQL access has no such request context, which
+is what makes it the only way to create the first admin at all.
