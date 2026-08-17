@@ -7,7 +7,7 @@
 -- the fixture users/nodes created here never persist.
 
 begin;
-select plan(16);
+select plan(23);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: one member, one editor, one admin; a published root, a draft
@@ -194,6 +194,109 @@ select throws_ok(
   'P0001',
   'Only admins can change role',
   'a service_role request through PostgREST is still subject to the privilege guard'
+);
+
+-- Back to an unrestricted role before setting up the next fixture -- the
+-- service_role block above left us running as 'authenticated', which can't
+-- insert into auth.users/auth.sessions.
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- Deactivation: is_active isn't in the JWT at all -- is_enabled() checks it
+-- live against profiles on every query -- so this must block a deactivated
+-- user even though their JWT is still perfectly valid and still claims
+-- user_role=editor. A dedicated node is used here rather than reusing root,
+-- since root was archived by the admin block above.
+--
+-- The role/is_active changes below run as the admin persona (via
+-- pg_temp.act_as) rather than as bare direct SQL. request.jwt.claims is a
+-- custom GUC -- once set within a session it can't be returned to true
+-- NULL (RESET brings it back to '', not NULL), so by this point in the
+-- file it's permanently non-null from the service_role block above. That's
+-- fine: acting as the admin is also the actually-realistic path for one
+-- user managing another's role/is_active, and prevent_profile_privilege_
+-- escalation permits it on its own terms (is_admin() = true).
+-- ---------------------------------------------------------------------------
+
+insert into auth.users (
+  instance_id, id, aud, role, email, encrypted_password,
+  email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+) values (
+  '00000000-0000-0000-0000-000000000000', '44444444-4444-4444-4444-444444444444', 'authenticated', 'authenticated',
+  'rlstest-deactivated@devhub.test', crypt('not-a-real-password', gen_salt('bf')), now(),
+  '{"provider":"email","providers":["email"]}', '{"display_name":"RLS Test Deactivated"}', now(), now()
+);
+
+insert into public.doc_nodes (id, parent_id, slug, title, kind, status)
+values ('aaaaaaaa-0000-0000-0000-000000000007', null, 'rls-test-deactivation', 'RLS Test Deactivation', 'page', 'published');
+
+-- A session row to prove the revocation trigger fires on deactivation.
+insert into auth.sessions (id, user_id, created_at, updated_at, not_after)
+values (gen_random_uuid(), '44444444-4444-4444-4444-444444444444', now(), now(), now() + interval '1 week');
+
+select pg_temp.act_as('33333333-3333-3333-3333-333333333333', 'admin');
+update public.profiles set role = 'editor' where id = '44444444-4444-4444-4444-444444444444';
+update public.profiles set is_active = false where id = '44444444-4444-4444-4444-444444444444';
+
+-- auth.sessions has no grants for `authenticated` at all (table-level, not
+-- RLS) -- check it back under the unrestricted role, not the admin persona.
+reset role;
+
+select is(
+  (select count(*)::int from auth.sessions where user_id = '44444444-4444-4444-4444-444444444444'),
+  0,
+  'deactivation removes the user''s auth.sessions rows'
+);
+
+select pg_temp.act_as('44444444-4444-4444-4444-444444444444', 'editor');
+
+select is(
+  (select count(*)::int from public.doc_nodes where id = 'aaaaaaaa-0000-0000-0000-000000000007'),
+  0,
+  'a deactivated user cannot read a published doc_node'
+);
+
+select lives_ok(
+  $$ update public.doc_nodes set title = 'should not apply' where id = 'aaaaaaaa-0000-0000-0000-000000000007' $$,
+  'deactivated user update statement does not error (RLS silently matches zero rows)'
+);
+
+-- Checked from an unrestricted viewpoint, not the deactivated user's own --
+-- they can't read the row at all (previous assertion), so having them
+-- check their own "did it change" would just read back NULL either way.
+select pg_temp.act_as('33333333-3333-3333-3333-333333333333', 'admin');
+
+select is(
+  (select title from public.doc_nodes where id = 'aaaaaaaa-0000-0000-0000-000000000007'),
+  'RLS Test Deactivation',
+  'deactivated user update did not actually change the row'
+);
+
+select pg_temp.act_as('44444444-4444-4444-4444-444444444444', 'editor');
+
+select throws_ok(
+  $$ insert into public.doc_nodes (parent_id, slug, title, kind, status) values (null, 'rls-test-deactivated-insert', 'Should Not Insert', 'page', 'draft') $$,
+  '42501',
+  'new row violates row-level security policy for table "doc_nodes"',
+  'a deactivated editor cannot insert a doc_node'
+);
+
+-- Reactivate as the admin (same reasoning as above), then re-check as the
+-- same still-editor JWT.
+select pg_temp.act_as('33333333-3333-3333-3333-333333333333', 'admin');
+update public.profiles set is_active = true where id = '44444444-4444-4444-4444-444444444444';
+
+select pg_temp.act_as('44444444-4444-4444-4444-444444444444', 'editor');
+
+select is(
+  (select count(*)::int from public.doc_nodes where id = 'aaaaaaaa-0000-0000-0000-000000000007'),
+  1,
+  'reactivating restores read access'
+);
+
+select lives_ok(
+  $$ update public.doc_nodes set title = 'Reactivated Editor Works' where id = 'aaaaaaaa-0000-0000-0000-000000000007' $$,
+  'reactivating restores write access'
 );
 
 select * from finish();
