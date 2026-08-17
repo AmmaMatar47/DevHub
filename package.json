@@ -10,6 +10,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "typecheck": "tsc -b --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "db:types": "supabase gen types typescript --linked > src/types/database.types.ts",
     "db:reset": "supabase db reset",
     "db:diff": "supabase db diff",
@@ -42,6 +44,7 @@
     "supabase": "^2.114.0",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.67.0",
-    "vite": "^8.2.0"
+    "vite": "^8.2.0",
+    "vitest": "^4.1.10"
   }
 }

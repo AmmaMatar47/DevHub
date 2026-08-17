@@ -1,8 +1,16 @@
-import { Box, Flex, Stack, Text } from '@chakra-ui/react'
-import { Laptop, Moon, SlidersHorizontal, Sun } from 'lucide-react'
+import { Box, Button, Flex, Stack, Text } from '@chakra-ui/react'
+import { Laptop, LogOut, Moon, Sun } from 'lucide-react'
 import { PageHeader } from '@/shared/components/PageHeader'
-import { EmptyState } from '@/shared/components/EmptyState'
 import { useColorMode, type ColorModePreference } from '@/shared/ui/color-mode'
+import { useAuth } from '@/features/auth/context/AuthContext'
+import { useSignOut } from '@/features/auth/api/useSignOut'
+import { RoleBadge } from '@/features/auth/components/RoleBadge'
+
+const memberSinceFormatter = new Intl.DateTimeFormat('en-US', {
+  month: 'long',
+  day: 'numeric',
+  year: 'numeric',
+})
 
 const APPEARANCE_OPTIONS: Array<{
   value: ColorModePreference
@@ -16,10 +24,67 @@ const APPEARANCE_OPTIONS: Array<{
 
 export function SettingsPage() {
   const { preference, setColorMode } = useColorMode()
+  const { profile, session } = useAuth()
+  const signOut = useSignOut()
 
   return (
     <Stack gap={8}>
       <PageHeader title="Settings" description="Manage your DevHub preferences." />
+
+      <Box
+        borderWidth="1px"
+        borderColor="border.default"
+        borderRadius="l2"
+        bg="bg.surface"
+        p={{ base: 4, lg: 6 }}
+      >
+        <Text fontWeight="600" fontSize="md" mb={4}>
+          Account
+        </Text>
+
+        {profile ? (
+          <Stack gap={4}>
+            <Flex direction={{ base: 'column', sm: 'row' }} gap={{ base: 1, sm: 8 }}>
+              <Text w={{ sm: '140px' }} flexShrink={0} fontSize="sm" color="fg.muted">
+                Name
+              </Text>
+              <Text fontSize="sm">{profile.display_name}</Text>
+            </Flex>
+            <Flex direction={{ base: 'column', sm: 'row' }} gap={{ base: 1, sm: 8 }}>
+              <Text w={{ sm: '140px' }} flexShrink={0} fontSize="sm" color="fg.muted">
+                Email
+              </Text>
+              <Text fontSize="sm">{session?.user.email}</Text>
+            </Flex>
+            <Flex direction={{ base: 'column', sm: 'row' }} align={{ sm: 'center' }} gap={{ base: 1, sm: 8 }}>
+              <Text w={{ sm: '140px' }} flexShrink={0} fontSize="sm" color="fg.muted">
+                Role
+              </Text>
+              <RoleBadge role={profile.role} />
+            </Flex>
+            <Flex direction={{ base: 'column', sm: 'row' }} gap={{ base: 1, sm: 8 }}>
+              <Text w={{ sm: '140px' }} flexShrink={0} fontSize="sm" color="fg.muted">
+                Member since
+              </Text>
+              <Text fontSize="sm">{memberSinceFormatter.format(new Date(profile.created_at))}</Text>
+            </Flex>
+
+            <Box pt={2}>
+              <Button
+                onClick={() => signOut.mutate()}
+                loading={signOut.isPending}
+                disabled={signOut.isPending}
+                variant="outline"
+                borderColor="border.default"
+                size="sm"
+              >
+                <LogOut size={15} />
+                Sign out
+              </Button>
+            </Box>
+          </Stack>
+        ) : null}
+      </Box>
 
       <Box
         borderWidth="1px"
@@ -68,12 +133,6 @@ export function SettingsPage() {
           })}
         </Flex>
       </Box>
-
-      <EmptyState
-        icon={SlidersHorizontal}
-        title="More settings coming in a later milestone"
-        description="Profile, notification, and workspace preferences will land alongside the account layer."
-      />
     </Stack>
   )
 }

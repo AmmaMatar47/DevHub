@@ -83,6 +83,24 @@ locally (`db:reset`, `db:diff`, `db:push`, `db:types`).
 (role `member`, `display_name` falling back to the email's local-part when no name is set on the
 account) via the `handle_new_user` trigger.
 
+**Password resets are dashboard-only, for now.** The free plan's built-in email sending is
+rate-limited to a handful of sends per hour, so there's no in-app "forgot password" flow — an admin
+resets a user's password from the Supabase dashboard (Authentication > Users > select user > Reset
+password) when asked. This is worth revisiting once the project has its own SMTP configured.
+
+## Authentication
+
+Sign-in (`/login`, email + password only — no sign-up, no OAuth) lives in `src/features/auth/`.
+`AuthProvider` (mounted in `app/providers.tsx`) is the single source of truth for session, profile,
+and role; `RequireAuth` guards every route under `AppLayout` and redirects to `/login` (preserving
+the originally requested path) while `RequireRole` gates by minimum role for later milestones.
+
+A role change made directly in the database won't reach a signed-in session until its JWT
+refreshes — `AuthProvider` detects the mismatch between `profiles.role` and the JWT's `user_role`
+claim, attempts one `refreshSession()`, and shows a non-blocking "sign in again" notice if that
+doesn't resolve it. `is_active = false` signs the user out immediately, checked on every session
+bootstrap and profile refetch, not only at sign-in.
+
 ### Bootstrapping the first admin
 
 Every role after the first has to be granted by an existing admin through the app — but the very
