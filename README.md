@@ -97,8 +97,19 @@ the originally requested path) while `RequireRole` gates by minimum role for lat
 A role change made directly in the database won't reach a signed-in session until its JWT
 refreshes — `AuthProvider` detects the mismatch between `profiles.role` and the JWT's `user_role`
 claim, attempts one `refreshSession()`, and shows a non-blocking "sign in again" notice if that
-doesn't resolve it. `is_active = false` signs the user out immediately, checked on every session
-bootstrap and profile refetch, not only at sign-in.
+doesn't resolve it.
+
+**`is_active` is enforced by the database, not the client.** A deactivated user's JWT is still
+cryptographically valid and still carries `user_role` — stamping `is_active` into the JWT hook
+would have the same staleness problem as the role claim, just relocated, since a JWT can't be
+revoked early. Instead, `private.is_enabled()` (a `STABLE SECURITY DEFINER` function, one indexed
+lookup per statement) is `AND`ed into every RLS policy that grants read or write access, checking
+`profiles.is_active` live on every query. A trigger on `profiles` additionally deletes the user's
+`auth.sessions` rows the moment `is_active` flips to `false`, which invalidates their refresh token
+so `supabase-js` can no longer silently renew access — belt and braces on top of `is_enabled()`,
+not a replacement for it. The client also checks `is_active` (on session bootstrap and on every
+profile refetch) and signs the user out immediately with a clear message, but that's UX only: if it
+were ever bypassed or stale, every query the deactivated user made would still come back empty.
 
 ### Bootstrapping the first admin
 
@@ -117,6 +128,23 @@ Run this from the Supabase SQL editor or a direct `psql` connection — **never*
 that arrives through a real PostgREST request unless the caller is already an admin, precisely to
 stop a member from granting themselves admin. Direct SQL access has no such request context, which
 is what makes it the only way to create the first admin at all.
+
+## Troubleshooting
+
+**Creating a test user directly via SQL fails sign-in with a cryptic `500 "Database error
+querying schema"`.** GoTrue's driver can't scan `NULL` out of `auth.users`' token columns
+(`confirmation_token`, `recovery_token`, `email_change_token_new`, `email_change_token_current`,
+`email_change`, `phone_change`, `phone_change_token`, `reauthentication_token`) — they need empty
+strings, not `NULL`, which a plain `INSERT` leaves them as by default. Prefer creating users
+through the dashboard (Authentication > Users > Invite), which sets these correctly; if you do need
+to insert one directly (e.g. for a disposable test account), set all eight columns to `''`
+explicitly.
+
+**The email auth provider won't toggle on via `config.toml`.** `[auth.email] enable_signup` and
+similar behavioural flags exist in `config.toml`, but the provider's own on/off switch is
+dashboard-only in this CLI version (Authentication > Providers > Email) — there's no config.toml
+key for it, so `supabase config push` can't touch it. If password sign-in fails with
+`422 email_provider_disabled`, this is why.
 
 ## Contributing
 
