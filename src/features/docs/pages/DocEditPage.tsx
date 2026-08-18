@@ -345,6 +345,7 @@ export function DocEditPage({ node }: DocEditPageProps) {
               onChange={setContentMd}
               onSave={handleSave}
               textareaRef={sourceRef}
+              nodeId={node.id}
               onScroll={(event) => {
                 if (previewRef.current) syncScroll(event.currentTarget, previewRef.current)
               }}
@@ -370,7 +371,13 @@ export function DocEditPage({ node }: DocEditPageProps) {
             <Tabs.Trigger value="preview">Preview</Tabs.Trigger>
           </Tabs.List>
           <Tabs.Content value="write" p={0} h="60vh" minH="400px" borderWidth="1px" borderColor="border.default" borderRadius="l2" overflow="hidden">
-            <MarkdownEditorPane value={contentMd} onChange={setContentMd} onSave={handleSave} textareaRef={sourceRef} />
+            <MarkdownEditorPane
+              value={contentMd}
+              onChange={setContentMd}
+              onSave={handleSave}
+              textareaRef={sourceRef}
+              nodeId={node.id}
+            />
           </Tabs.Content>
           <Tabs.Content
             value="preview"

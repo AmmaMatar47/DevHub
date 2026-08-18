@@ -6,7 +6,10 @@ import tseslint from 'typescript-eslint'
 import prettier from 'eslint-config-prettier'
 
 export default tseslint.config(
-  { ignores: ['dist', 'src/types/database.types.ts'] },
+  // supabase/functions/** are Deno edge functions -- a separate runtime with
+  // its own npm: import specifiers and globals, not part of this Vite/React
+  // TS project.
+  { ignores: ['dist', 'src/types/database.types.ts', 'supabase/functions/**'] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommendedTypeChecked],
     files: ['**/*.{ts,tsx}'],
