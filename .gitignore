@@ -21,6 +21,10 @@ dist-ssr
 .claude/
 .mcp.json
 
+# Import bundles -- the zip the user provides is the source of truth; the
+# extracted content (nine images especially) doesn't belong in git history.
+scripts/import/bundle/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
