@@ -1,17 +1,22 @@
-import { isValidElement, type ReactNode } from 'react'
-import ReactMarkdown, { type Components } from 'react-markdown'
+import { Children, isValidElement, type ReactNode } from 'react'
+import ReactMarkdown, { defaultUrlTransform, type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
 import { Box, chakra, Text } from '@chakra-ui/react'
 import { Link as RouterLink } from 'react-router-dom'
 import { CodeBlock } from './markdown/CodeBlock'
+import { DocImage } from './markdown/DocImage'
+import { DocImagesProvider } from './markdown/DocImagesProvider'
 
 /**
  * The default hast-util-sanitize schema, extended only enough to survive
- * syntax highlighting: fenced code blocks carry a `language-*` class, and
- * Shiki's dual-theme output puts its per-token colors in an inline `style`
- * attribute (CSS variables, so light/dark both ship in one highlight pass).
- * Nothing else is added -- no raw HTML, no event handlers, no extra tags.
+ * syntax highlighting and internal images: fenced code blocks carry a
+ * `language-*` class, Shiki's dual-theme output puts its per-token colors in
+ * an inline `style` attribute (CSS variables, so light/dark both ship in one
+ * highlight pass), and doc images use a custom `image:{storage_path}` URL
+ * scheme (see useUploadDocImage) that the default schema's `src` protocol
+ * allowlist (http/https only) would otherwise silently strip. Nothing else
+ * is added -- no raw HTML, no event handlers, no extra tags.
  */
 const schema = {
   ...defaultSchema,
@@ -20,6 +25,24 @@ const schema = {
     code: [...(defaultSchema.attributes?.code ?? []), 'className'],
     span: [...(defaultSchema.attributes?.span ?? []), 'className', 'style'],
   },
+  protocols: {
+    ...defaultSchema.protocols,
+    src: [...(defaultSchema.protocols?.src ?? []), 'image'],
+  },
+}
+
+/**
+ * react-markdown runs its own URL allowlist independently of rehype-sanitize
+ * -- a hardcoded `/^(https?|ircs?|mailto|xmpp)$/i` check on every `href`/
+ * `src` (see defaultUrlTransform), applied *after* sanitize and right before
+ * handing the value to components as a prop. The schema change above only
+ * satisfies rehype-sanitize; without this, react-markdown's own transform
+ * still blanks `image:...` to `''` before DocImage ever sees it. Only `src`
+ * gets the exception -- `href` (real links) keeps the unmodified default.
+ */
+function urlTransform(value: string, key: string): string {
+  if (key === 'src' && value.startsWith('image:')) return value
+  return defaultUrlTransform(value)
 }
 
 function extractText(node: ReactNode): string {
@@ -36,6 +59,21 @@ function slugify(text: string): string {
     .trim()
     .replace(/[^\w\s-]/g, '')
     .replace(/\s+/g, '-')
+}
+
+/**
+ * A named top-level function (not an inline arrow in `components`) so `p`
+ * below can compare a child's `.type` against this exact reference --
+ * react-markdown creates elements typed as *this* component, not whatever
+ * it happens to return internally (DocImage or chakra.img).
+ */
+function MarkdownImage({ src, alt }: { src?: string; alt?: string }) {
+  if (typeof src === 'string' && src.startsWith('image:')) {
+    return <DocImage path={src.slice('image:'.length)} fallbackAlt={alt} />
+  }
+  return (
+    <chakra.img src={typeof src === 'string' ? src : undefined} alt={alt} loading="lazy" maxW="full" borderRadius="l2" my={4} />
+  )
 }
 
 const components: Components = {
@@ -66,11 +104,28 @@ const components: Components = {
       </Text>
     )
   },
-  p: ({ children }) => (
-    <Text as="p" mb={4}>
-      {children}
-    </Text>
-  ),
+  // Markdown always puts inline `![]()` images inside a <p> -- fine for a
+  // plain <img>, but DocImage renders a <figure> (block-level, plus a
+  // caption), which browsers can't legally nest inside <p>. They silently
+  // close the <p> early to recover, which desyncs React's reconciliation
+  // from the real DOM (visible as bogus empty-src warnings on the orphaned
+  // img nodes). A paragraph containing only image(s) renders as a <div>
+  // instead; anything with real text still gets a real <p>.
+  p: ({ children }) => {
+    const childArray = Children.toArray(children)
+    const isImageOnly =
+      childArray.length > 0 && childArray.every((child) => isValidElement(child) && child.type === MarkdownImage)
+
+    if (isImageOnly) {
+      return <Box mb={4}>{children}</Box>
+    }
+
+    return (
+      <Text as="p" mb={4}>
+        {children}
+      </Text>
+    )
+  },
   ul: ({ children }) => (
     <Box as="ul" pl={6} mb={4} css={{ listStyleType: 'disc' }}>
       {children}
@@ -109,9 +164,7 @@ const components: Components = {
       </RouterLink>
     )
   },
-  img: ({ src, alt }) => (
-    <chakra.img src={typeof src === 'string' ? src : undefined} alt={alt} loading="lazy" maxW="full" borderRadius="l2" my={4} />
-  ),
+  img: MarkdownImage,
   table: ({ children }) => (
     <Box overflowX="auto" my={4}>
       <Box as="table" w="full" fontSize="sm">
@@ -161,10 +214,17 @@ interface MarkdownContentProps {
  */
 export function MarkdownContent({ content }: MarkdownContentProps) {
   return (
-    <Box maxW="70ch" lineHeight="prose" fontSize="md" color="fg.default">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[[rehypeSanitize, schema]]} components={components}>
-        {content}
-      </ReactMarkdown>
-    </Box>
+    <DocImagesProvider content={content}>
+      <Box maxW="70ch" lineHeight="prose" fontSize="md" color="fg.default">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={[[rehypeSanitize, schema]]}
+          urlTransform={urlTransform}
+          components={components}
+        >
+          {content}
+        </ReactMarkdown>
+      </Box>
+    </DocImagesProvider>
   )
 }

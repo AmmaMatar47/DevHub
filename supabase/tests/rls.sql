@@ -7,7 +7,7 @@
 -- the fixture users/nodes created here never persist.
 
 begin;
-select plan(25);
+select plan(36);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: one member, one editor, one admin; a published root, a draft
@@ -37,6 +37,20 @@ values
 -- Archive it via direct SQL (no request context bypasses the archive
 -- guard, same as the admin-only path would through the API).
 update public.doc_nodes set archived_at = now() where id = 'aaaaaaaa-0000-0000-0000-000000000006';
+
+-- M4a.1: one doc_images row on the published root, one on the draft child --
+-- doc_images_select mirrors doc_nodes visibility exactly, so these piggyback
+-- on the same published/draft distinction already set up above. One
+-- doc_image_sweep_log row too (only ever written by the sweep edge
+-- function's service_role connection, which bypasses RLS -- inserted here
+-- directly for the same reason).
+insert into public.doc_images (id, node_id, storage_path, full_path, width, height, byte_size)
+values
+  ('bbbbbbbb-0000-0000-0000-000000000001', 'aaaaaaaa-0000-0000-0000-000000000001', 'rls-test/published.webp', 'rls-test/published@full.webp', 10, 10, 100),
+  ('bbbbbbbb-0000-0000-0000-000000000002', 'aaaaaaaa-0000-0000-0000-000000000002', 'rls-test/draft.webp', 'rls-test/draft@full.webp', 10, 10, 100);
+
+insert into public.doc_image_sweep_log (doc_image_id, node_id, storage_path, full_path, byte_size, orphaned_at)
+values ('bbbbbbbb-0000-0000-0000-000000000099', 'aaaaaaaa-0000-0000-0000-000000000001', 'rls-test/swept.webp', 'rls-test/swept@full.webp', 100, now());
 
 create or replace function pg_temp.act_as(user_id uuid, role_claim text, pg_role text default 'authenticated')
 returns void
@@ -108,6 +122,28 @@ select throws_ok(
   'member cannot deactivate their own account'
 );
 
+-- M4a.1: doc_images_select mirrors doc_nodes visibility -- a member sees
+-- the published node's image, not the draft's -- and can never upload
+-- (doc_images_insert_editor requires is_editor()).
+select is(
+  (select count(*)::int from public.doc_images where id = 'bbbbbbbb-0000-0000-0000-000000000001'),
+  1,
+  'member can read a doc_images row on a published node'
+);
+
+select is(
+  (select count(*)::int from public.doc_images where id = 'bbbbbbbb-0000-0000-0000-000000000002'),
+  0,
+  'member cannot read a doc_images row on a draft node'
+);
+
+select throws_ok(
+  $$ insert into public.doc_images (node_id, storage_path, full_path, width, height, byte_size) values ('aaaaaaaa-0000-0000-0000-000000000001', 'rls-test/member-upload.webp', 'rls-test/member-upload@full.webp', 10, 10, 100) $$,
+  '42501',
+  'new row violates row-level security policy for table "doc_images"',
+  'member cannot upload (insert) a doc_images row'
+);
+
 -- ---------------------------------------------------------------------------
 -- Editor: sees drafts/needs_review, can write content, cannot archive,
 -- cannot insert directly into doc_versions (trigger-only).
@@ -140,6 +176,39 @@ select throws_ok(
   'editor cannot insert directly into doc_versions (trigger-only)'
 );
 
+-- M4a.1: editor sees the draft's image too (doc_images_select ORs in
+-- is_editor()), can upload, but doc_images_delete_admin means a delete
+-- attempt is just silently filtered to zero rows -- same USING-clause
+-- pattern as the member update test above, not an error.
+select is(
+  (select count(*)::int from public.doc_images where id = 'bbbbbbbb-0000-0000-0000-000000000002'),
+  1,
+  'editor can read a doc_images row on a draft node'
+);
+
+select lives_ok(
+  $$ insert into public.doc_images (id, node_id, storage_path, full_path, width, height, byte_size) values ('bbbbbbbb-0000-0000-0000-000000000003', 'aaaaaaaa-0000-0000-0000-000000000002', 'rls-test/editor-upload.webp', 'rls-test/editor-upload@full.webp', 10, 10, 100) $$,
+  'editor can upload (insert) a doc_images row'
+);
+
+select lives_ok(
+  $$ delete from public.doc_images where id = 'bbbbbbbb-0000-0000-0000-000000000001' $$,
+  'editor delete statement does not error (RLS silently matches zero rows)'
+);
+
+select is(
+  (select count(*)::int from public.doc_images where id = 'bbbbbbbb-0000-0000-0000-000000000001'),
+  1,
+  'editor delete did not actually remove the row (RLS blocked it, admin-only)'
+);
+
+-- doc_image_sweep_log is an admin-only audit trail -- editors get nothing.
+select is(
+  (select count(*)::int from public.doc_image_sweep_log),
+  0,
+  'editor cannot read doc_image_sweep_log'
+);
+
 -- ---------------------------------------------------------------------------
 -- Admin: can archive.
 -- ---------------------------------------------------------------------------
@@ -155,6 +224,25 @@ select is(
   (select archived_at is not null from public.doc_nodes where id = 'aaaaaaaa-0000-0000-0000-000000000001'),
   true,
   'archived_at was actually set'
+);
+
+-- M4a.1: admin is the only role that can actually delete a doc_images row,
+-- and can read the sweep log the other personas above could not.
+select lives_ok(
+  $$ delete from public.doc_images where id = 'bbbbbbbb-0000-0000-0000-000000000001' $$,
+  'admin can delete a doc_images row'
+);
+
+select is(
+  (select count(*)::int from public.doc_images where id = 'bbbbbbbb-0000-0000-0000-000000000001'),
+  0,
+  'admin delete actually removed the row'
+);
+
+select is(
+  (select count(*)::int from public.doc_image_sweep_log),
+  1,
+  'admin can read doc_image_sweep_log'
 );
 
 -- ---------------------------------------------------------------------------
