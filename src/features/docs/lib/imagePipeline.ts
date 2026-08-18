@@ -70,12 +70,20 @@ async function encodeWebp(bitmap: ImageBitmap, width: number, height: number, qu
 }
 
 /**
- * Validates a file and produces the two WebP tiers described in the M4a.1
+ * Validates a file and produces the WebP tier(s) described in the M4a.1
  * spec: a Display tier (longest edge <=1400px, quality 0.82 -- diagrams
  * with text labels compress worse than photos, hence the higher-than-usual
  * quality) and a Full tier (original resolution, quality 0.90) for the
  * lightbox. Animated GIFs are left untouched -- canvas can only capture a
  * single frame, so re-encoding one would silently kill the animation.
+ *
+ * M4a.2 Part 0 fix: when the original is already within the display cap,
+ * the two tiers would come out at identical dimensions and differ only in
+ * quality (measured on a real file: 100KB at 0.82 vs 145KB at 0.90, with
+ * the lightbox's "full" tier revealing zero extra detail over "display").
+ * In that case only one file is encoded, at the higher 0.90 quality, and
+ * both tiers point at it -- one upload instead of two, and no false
+ * impression that zooming in shows more than the inline image already did.
  */
 export async function validateAndProcessImage(file: File): Promise<ProcessedImage> {
   if (file.size > MAX_UPLOAD_BYTES) {
@@ -100,13 +108,19 @@ export async function validateAndProcessImage(file: File): Promise<ProcessedImag
       return { display: file, full: file, width: bitmap.width, height: bitmap.height, displayExt: 'gif', fullExt: 'gif' }
     }
 
+    const withinDisplayCap = Math.max(bitmap.width, bitmap.height) <= DISPLAY_MAX_EDGE
+
+    if (withinDisplayCap) {
+      const single = detected === 'webp' ? file : await encodeWebp(bitmap, bitmap.width, bitmap.height, FULL_QUALITY)
+      return { display: single, full: single, width: bitmap.width, height: bitmap.height, displayExt: 'webp', fullExt: 'webp' }
+    }
+
     const full = detected === 'webp' ? file : await encodeWebp(bitmap, bitmap.width, bitmap.height, FULL_QUALITY)
 
-    const scale = Math.min(1, DISPLAY_MAX_EDGE / Math.max(bitmap.width, bitmap.height))
+    const scale = DISPLAY_MAX_EDGE / Math.max(bitmap.width, bitmap.height)
     const displayWidth = Math.max(1, Math.round(bitmap.width * scale))
     const displayHeight = Math.max(1, Math.round(bitmap.height * scale))
-    const display =
-      detected === 'webp' && scale === 1 ? file : await encodeWebp(bitmap, displayWidth, displayHeight, DISPLAY_QUALITY)
+    const display = await encodeWebp(bitmap, displayWidth, displayHeight, DISPLAY_QUALITY)
 
     return { display, full, width: displayWidth, height: displayHeight, displayExt: 'webp', fullExt: 'webp' }
   } finally {
