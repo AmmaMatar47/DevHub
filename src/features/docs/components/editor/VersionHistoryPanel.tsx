@@ -4,6 +4,7 @@ import { History, X } from 'lucide-react'
 import { MarkdownContent } from '@/lib/markdown'
 import { EmptyState } from '@/shared/components/EmptyState'
 import { useDocVersions, type DocVersion } from '../../api/useDocVersions'
+import type { DocStatus } from '../../lib/buildTree'
 import { VersionDiffView } from './VersionDiffView'
 
 const versionDateFormatter = new Intl.DateTimeFormat('en-US', {
@@ -18,11 +19,15 @@ interface VersionHistoryPanelProps {
   open: boolean
   onClose: () => void
   nodeId: string
-  /** The editor's current content, used as the "current" side of the diff --
-   * not necessarily what's saved on the server if there are unsaved edits. */
+  /** The editor's current content/metadata, used as the "current" side of
+   * the diff -- not necessarily what's saved on the server if there are
+   * unsaved edits. */
   currentTitle: string
   currentContent: string
-  onRestore: (version: { title: string; content_md: string }) => void
+  currentSlug: string
+  currentStatus: DocStatus
+  currentDifficulty: number | null
+  onRestore: (version: { title: string; content_md: string; slug: string; status: DocStatus; difficulty: number | null }) => void
 }
 
 /**
@@ -35,6 +40,9 @@ export function VersionHistoryPanel({
   nodeId,
   currentTitle,
   currentContent,
+  currentSlug,
+  currentStatus,
+  currentDifficulty,
   onRestore,
 }: VersionHistoryPanelProps) {
   const { data: versions, isPending, isError } = useDocVersions(open ? nodeId : undefined)
@@ -119,6 +127,7 @@ export function VersionHistoryPanel({
                           </Text>
                           <Text fontSize="xs" color="fg.muted">
                             {version.editor?.display_name ?? 'Unknown editor'}
+                            {version.is_approximate ? ' · approximate metadata' : ''}
                           </Text>
                         </chakra.button>
                       )
@@ -162,7 +171,8 @@ export function VersionHistoryPanel({
                       {confirmingRestore ? (
                         <Flex gap={2} align="center">
                           <Text fontSize="xs" color="fg.muted">
-                            Restore will create a new version, not overwrite this one.
+                            Restore will create a new version, not overwrite this one. Title, content, slug, status, and
+                            difficulty all revert to this version.
                           </Text>
                           <Button size="xs" variant="outline" borderColor="border.default" onClick={() => setConfirmingRestore(false)}>
                             Cancel
@@ -173,7 +183,13 @@ export function VersionHistoryPanel({
                             color="accent.contrast"
                             _hover={{ bg: 'accent.hover' }}
                             onClick={() => {
-                              onRestore({ title: selected.title, content_md: selected.content_md ?? '' })
+                              onRestore({
+                                title: selected.title,
+                                content_md: selected.content_md ?? '',
+                                slug: selected.slug,
+                                status: selected.status,
+                                difficulty: selected.difficulty,
+                              })
                               setConfirmingRestore(false)
                               handleClose()
                             }}
@@ -188,6 +204,13 @@ export function VersionHistoryPanel({
                       )}
                     </Flex>
 
+                    {selected.is_approximate ? (
+                      <Text fontSize="xs" color="fg.muted">
+                        Slug, status, and difficulty on this version were backfilled from the page&apos;s current values when
+                        this column was added, not captured at the time this version was actually saved.
+                      </Text>
+                    ) : null}
+
                     {mode === 'view' ? (
                       <Box borderWidth="1px" borderColor="border.default" borderRadius="l1" p={4} overflowY="auto">
                         <Text fontWeight="600" fontSize="lg" mb={3}>
@@ -199,6 +222,8 @@ export function VersionHistoryPanel({
                       <VersionDiffView
                         oldText={`${selected.title}\n\n${selected.content_md ?? ''}`}
                         newText={`${currentTitle}\n\n${currentContent}`}
+                        oldMeta={{ slug: selected.slug, status: selected.status, difficulty: selected.difficulty }}
+                        newMeta={{ slug: currentSlug, status: currentStatus, difficulty: currentDifficulty }}
                       />
                     )}
                   </Stack>

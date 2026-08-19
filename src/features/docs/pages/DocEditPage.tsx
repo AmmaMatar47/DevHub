@@ -42,6 +42,9 @@ interface EditableState {
 }
 
 interface Baseline extends EditableState {
+  /** Not part of EditableState -- there's no slug editor yet (Part 5 owns
+   * that), but restore needs to read/write it, so it's tracked here. */
+  slug: string
   updatedAt: string
   publishedAt: string | null
 }
@@ -103,7 +106,7 @@ export function DocEditPage({ node }: DocEditPageProps) {
     setContentMd(server.content_md)
     setDifficulty(server.difficulty)
     setStatus(server.status)
-    setBaseline({ ...server, updatedAt: full.updated_at, publishedAt: full.published_at })
+    setBaseline({ ...server, slug: full.slug, updatedAt: full.updated_at, publishedAt: full.published_at })
   }
 
   const dirty =
@@ -161,7 +164,13 @@ export function DocEditPage({ node }: DocEditPageProps) {
     setRestorePrompt(null)
   }
 
-  function performSave(values: { title: string; content_md: string; difficulty: number | null; status: DocStatus }) {
+  function performSave(values: {
+    title: string
+    content_md: string
+    difficulty: number | null
+    status: DocStatus
+    slug: string
+  }) {
     if (!baseline || saveState === 'saving') return
     setSaveState('saving')
     setSaveError(null)
@@ -173,12 +182,13 @@ export function DocEditPage({ node }: DocEditPageProps) {
       { id: node.id, ...values, publishedAt, loadedAt: baseline.updatedAt },
       {
         onSuccess: (saved) => {
-          if (saved.title !== baseline.title || saved.status !== baseline.status) {
+          if (saved.title !== baseline.title || saved.slug !== baseline.slug || saved.status !== baseline.status) {
             void queryClient.invalidateQueries({ queryKey: docTreeQueryKey })
           }
           clearLocalDraft(node.id)
           setBaseline({
             title: saved.title,
+            slug: saved.slug,
             content_md: saved.content_md ?? '',
             difficulty: saved.difficulty,
             status: saved.status,
@@ -205,7 +215,8 @@ export function DocEditPage({ node }: DocEditPageProps) {
   }
 
   function handleSave() {
-    performSave({ title, content_md: contentMd, difficulty, status })
+    if (!baseline) return
+    performSave({ title, content_md: contentMd, difficulty, status, slug: baseline.slug })
   }
 
   function handleAcknowledgeConflict() {
@@ -214,14 +225,24 @@ export function DocEditPage({ node }: DocEditPageProps) {
     setConflict(null)
   }
 
-  // Restore needs no special RPC -- it's the old title/content_md written
-  // back through the exact same update path as a normal save (optimistic
-  // concurrency, the version-snapshot trigger, everything), which is what
-  // makes it itself reversible rather than a destructive one-off.
-  function handleRestoreVersion(version: { title: string; content_md: string }) {
+  // Restore needs no special RPC -- it's the old snapshot's five fields
+  // written back through the exact same update path as a normal save
+  // (optimistic concurrency, the version-snapshot trigger, everything),
+  // which is what makes it itself reversible rather than a destructive
+  // one-off. All five fields apply, including slug -- restoring an old
+  // version should not silently leave the current slug in place.
+  function handleRestoreVersion(version: {
+    title: string
+    content_md: string
+    slug: string
+    status: DocStatus
+    difficulty: number | null
+  }) {
     setTitle(version.title)
     setContentMd(version.content_md)
-    performSave({ title: version.title, content_md: version.content_md, difficulty, status })
+    setStatus(version.status)
+    setDifficulty(version.difficulty)
+    performSave(version)
   }
 
   function handleCancel() {
@@ -420,6 +441,9 @@ export function DocEditPage({ node }: DocEditPageProps) {
         nodeId={node.id}
         currentTitle={title}
         currentContent={contentMd}
+        currentSlug={baseline?.slug ?? node.slug}
+        currentStatus={status}
+        currentDifficulty={difficulty}
         onRestore={handleRestoreVersion}
       />
 

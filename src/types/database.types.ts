@@ -219,25 +219,37 @@ export type Database = {
         Row: {
           content_md: string | null
           created_at: string
+          difficulty: number | null
           edited_by: string | null
           id: string
+          is_approximate: boolean
           node_id: string
+          slug: string
+          status: Database['public']['Enums']['doc_status']
           title: string
         }
         Insert: {
           content_md?: string | null
           created_at?: string
+          difficulty?: number | null
           edited_by?: string | null
           id?: string
+          is_approximate?: boolean
           node_id: string
+          slug: string
+          status: Database['public']['Enums']['doc_status']
           title: string
         }
         Update: {
           content_md?: string | null
           created_at?: string
+          difficulty?: number | null
           edited_by?: string | null
           id?: string
+          is_approximate?: boolean
           node_id?: string
+          slug?: string
+          status?: Database['public']['Enums']['doc_status']
           title?: string
         }
         Relationships: [
@@ -310,12 +322,47 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      create_doc_node: {
+        Args: {
+          p_kind: Database['public']['Enums']['doc_kind']
+          p_parent_id: string
+          p_slug: string
+          p_title: string
+        }
+        Returns: {
+          archived_at: string | null
+          author_id: string | null
+          content_md: string | null
+          created_at: string
+          depth: number
+          difficulty: number | null
+          id: string
+          kind: Database['public']['Enums']['doc_kind']
+          last_edited_by: string | null
+          origin: Database['public']['Enums']['doc_origin']
+          parent_id: string | null
+          position: number
+          published_at: string | null
+          search_vector: unknown
+          slug: string
+          status: Database['public']['Enums']['doc_status']
+          title: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'doc_nodes'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       current_role: {
         Args: never
         Returns: Database['public']['Enums']['user_role']
       }
       custom_access_token_hook: { Args: { event: Json }; Returns: Json }
       extract_image_paths: { Args: { content: string }; Returns: string[] }
+      fix_subtree_depth: { Args: { p_root_id: string }; Returns: undefined }
       get_doc_node_image_paths: {
         Args: { target_node_id: string }
         Returns: {
@@ -334,6 +381,20 @@ export type Database = {
           position: number
           slug: string
           status: Database['public']['Enums']['doc_status']
+          title: string
+        }[]
+      }
+      get_move_targets: {
+        Args: { p_node_id: string }
+        Returns: {
+          depth: number
+          id: string
+          is_valid: boolean
+          kind: Database['public']['Enums']['doc_kind']
+          parent_id: string
+          path: string[]
+          reason: string
+          slug: string
           title: string
         }[]
       }
@@ -361,6 +422,19 @@ export type Database = {
       }
       is_admin: { Args: never; Returns: boolean }
       is_editor: { Args: never; Returns: boolean }
+      move_doc_node: {
+        Args: {
+          p_new_parent_id: string
+          p_new_position: number
+          p_node_id: string
+        }
+        Returns: undefined
+      }
+      reorder_doc_children: {
+        Args: { p_ordered_ids: string[]; p_parent_id: string }
+        Returns: undefined
+      }
+      subtree_height: { Args: { p_node_id: string }; Returns: number }
     }
     Enums: {
       doc_kind: 'section' | 'page'
@@ -382,12 +456,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema['Tables'] & DefaultSchema['Views'])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Views'])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -407,13 +481,12 @@ export type Tables<
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema['Tables']
-    | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+    keyof DefaultSchema['Tables'] | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables']
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -432,13 +505,12 @@ export type TablesInsert<
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema['Tables']
-    | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+    keyof DefaultSchema['Tables'] | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables']
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -457,13 +529,12 @@ export type TablesUpdate<
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
-    | keyof DefaultSchema['Enums']
-    | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    keyof DefaultSchema['Enums'] | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions['schema']]['Enums']
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -474,13 +545,12 @@ export type Enums<
 
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
-    | keyof DefaultSchema['CompositeTypes']
-    | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    keyof DefaultSchema['CompositeTypes'] | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions['schema']]['CompositeTypes']
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

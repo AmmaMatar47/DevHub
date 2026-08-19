@@ -94,6 +94,10 @@ export function findNodeByPath(nodes: DocTreeNode[], segments: string[]): DocTre
   return flattenTree(nodes).find((node) => node.path.join('/') === target)
 }
 
+export function findNodeById(nodes: DocTreeNode[], id: string): DocTreeNode | undefined {
+  return flattenTree(nodes).find((node) => node.id === id)
+}
+
 /**
  * The chain from root to `node`, inclusive — [React, Hooks, useState] for
  * a node at react/hooks/use-state. Used for breadcrumbs (needs each
