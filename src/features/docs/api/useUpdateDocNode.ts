@@ -3,11 +3,11 @@ import { supabase } from '@/lib/supabase'
 import { ZeroRowMutationError } from '@/lib/assertRowsAffected'
 import type { Tables } from '@/types/database.types'
 
-const SELECT_COLS = 'id, title, content_md, difficulty, status, published_at, updated_at' as const
+const SELECT_COLS = 'id, title, slug, content_md, difficulty, status, published_at, updated_at' as const
 
 export type SavedDocNode = Pick<
   Tables<'doc_nodes'>,
-  'id' | 'title' | 'content_md' | 'difficulty' | 'status' | 'published_at' | 'updated_at'
+  'id' | 'title' | 'slug' | 'content_md' | 'difficulty' | 'status' | 'published_at' | 'updated_at'
 >
 
 /**
@@ -32,6 +32,11 @@ export class SaveConflictError extends Error {
 export interface SaveDocNodeInput {
   id: string
   title: string
+  /** Not editable in this editor yet -- Part 5 (rename) owns slug edits and
+   * their redirect history. Restore is the one path that changes this
+   * today, since an old version's slug is part of what it means to restore
+   * that version. */
+  slug: string
   content_md: string
   difficulty: number | null
   status: Tables<'doc_nodes'>['status']
@@ -48,6 +53,7 @@ async function saveDocNode(input: SaveDocNodeInput): Promise<SavedDocNode> {
     .from('doc_nodes')
     .update({
       title: input.title,
+      slug: input.slug,
       content_md: input.content_md,
       difficulty: input.difficulty,
       status: input.status,

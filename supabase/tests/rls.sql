@@ -7,7 +7,7 @@
 -- the fixture users/nodes created here never persist.
 
 begin;
-select plan(36);
+select plan(58);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: one member, one editor, one admin; a published root, a draft
@@ -400,6 +400,240 @@ select is(
 select lives_ok(
   $$ update public.doc_nodes set title = 'Reactivated Editor Works' where id = 'aaaaaaaa-0000-0000-0000-000000000007' $$,
   'reactivating restores write access'
+);
+
+-- ---------------------------------------------------------------------------
+-- M4b Part 1/2: move_doc_node depth cascade, subtree-height cap, cycle
+-- rejection, and reorder_doc_children position normalisation.
+--
+-- The M1 set_doc_node_depth trigger only ever recomputes the single row it
+-- fires for (`for each row`, no cascade to children) -- fix_subtree_depth()
+-- exists specifically to walk the moved node's subtree and fix the rest.
+-- The cap check (new_parent_depth + 1 + subtree_height <= 3) has to look at
+-- the *whole* moved subtree's height, not just the moved node's own new
+-- depth, or a tall subtree could be dropped somewhere that pushes its
+-- deepest descendant past depth 3 while the moved node itself looks fine.
+-- ---------------------------------------------------------------------------
+
+select pg_temp.act_as('22222222-2222-2222-2222-222222222222', 'editor');
+
+-- A -> B -> C (chain): A's subtree height is 2, B's is 1.
+insert into public.doc_nodes (id, parent_id, slug, title, kind, status, position) values
+  ('cccccccc-1111-0000-0000-000000000001', null, 'mb-a', 'MB A', 'section', 'published', 100),
+  ('cccccccc-1111-0000-0000-000000000002', 'cccccccc-1111-0000-0000-000000000001', 'mb-b', 'MB B', 'section', 'published', 0),
+  ('cccccccc-1111-0000-0000-000000000003', 'cccccccc-1111-0000-0000-000000000002', 'mb-c', 'MB C', 'page', 'published', 0),
+  -- D -> E -> F: separate chain used purely as move targets at depth 0/1/2.
+  ('cccccccc-1111-0000-0000-000000000004', null, 'mb-d', 'MB D', 'section', 'published', 101),
+  ('cccccccc-1111-0000-0000-000000000005', 'cccccccc-1111-0000-0000-000000000004', 'mb-e', 'MB E', 'section', 'published', 0),
+  ('cccccccc-1111-0000-0000-000000000006', 'cccccccc-1111-0000-0000-000000000005', 'mb-f', 'MB F', 'page', 'published', 0),
+  -- G -> H: direct-cycle fixture.
+  ('cccccccc-1111-0000-0000-000000000007', null, 'mb-g', 'MB G', 'section', 'published', 102),
+  ('cccccccc-1111-0000-0000-000000000008', 'cccccccc-1111-0000-0000-000000000007', 'mb-h', 'MB H', 'section', 'published', 0),
+  -- I -> J -> K: indirect-cycle fixture.
+  ('cccccccc-1111-0000-0000-000000000009', null, 'mb-i', 'MB I', 'section', 'published', 103),
+  ('cccccccc-1111-0000-0000-00000000000a', 'cccccccc-1111-0000-0000-000000000009', 'mb-j', 'MB J', 'section', 'published', 0),
+  ('cccccccc-1111-0000-0000-00000000000b', 'cccccccc-1111-0000-0000-00000000000a', 'mb-k', 'MB K', 'page', 'published', 0),
+  -- P with children Q/R/S at non-contiguous positions, for reorder_doc_children.
+  ('cccccccc-1111-0000-0000-00000000000c', null, 'mb-p', 'MB P', 'section', 'published', 104),
+  ('cccccccc-1111-0000-0000-00000000000d', 'cccccccc-1111-0000-0000-00000000000c', 'mb-q', 'MB Q', 'page', 'published', 50),
+  ('cccccccc-1111-0000-0000-00000000000e', 'cccccccc-1111-0000-0000-00000000000c', 'mb-r', 'MB R', 'page', 'published', 5),
+  ('cccccccc-1111-0000-0000-00000000000f', 'cccccccc-1111-0000-0000-00000000000c', 'mb-s', 'MB S', 'page', 'published', 20);
+
+-- Moving A (subtree height 2) under D (depth 0): 0+1+2=3, exactly at the
+-- cap -- allowed, and depth must cascade through the whole subtree, not
+-- just A itself.
+select move_doc_node('cccccccc-1111-0000-0000-000000000001', 'cccccccc-1111-0000-0000-000000000004', 0);
+
+select is(
+  (select depth from public.doc_nodes where id = 'cccccccc-1111-0000-0000-000000000001'),
+  1::smallint,
+  'move_doc_node: moved node A gets the correct new depth'
+);
+select is(
+  (select depth from public.doc_nodes where id = 'cccccccc-1111-0000-0000-000000000002'),
+  2::smallint,
+  'move_doc_node: depth cascades to A''s child B, not just A itself'
+);
+select is(
+  (select depth from public.doc_nodes where id = 'cccccccc-1111-0000-0000-000000000003'),
+  3::smallint,
+  'move_doc_node: depth cascades two levels down, to A''s grandchild C'
+);
+
+-- Moving B (subtree height 1, carries child C) under E (depth 1):
+-- 1+1+1=3, exactly at the cap -- allowed even though B alone would look
+-- shallow; the check is against B's subtree height, not B's own new depth.
+select move_doc_node('cccccccc-1111-0000-0000-000000000002', 'cccccccc-1111-0000-0000-000000000005', 0);
+select is(
+  (select depth from public.doc_nodes where id = 'cccccccc-1111-0000-0000-000000000003'),
+  3::smallint,
+  'move_doc_node: subtree-height cap allows a move landing exactly at depth 3'
+);
+
+-- Moving B (subtree height 1) under F (depth 2): 2+1+1=4, one level past
+-- the cap -- rejected, even though B's own new depth (3) would be legal in
+-- isolation. This is the spec's own worked example.
+select throws_ok(
+  $$ select move_doc_node('cccccccc-1111-0000-0000-000000000002', 'cccccccc-1111-0000-0000-000000000006', 0) $$,
+  'P0001',
+  null,
+  'move_doc_node rejects a move whose subtree height, not just the moved node''s own depth, would exceed the cap'
+);
+
+-- Direct cycle: G under its own child H.
+select throws_ok(
+  $$ select move_doc_node('cccccccc-1111-0000-0000-000000000007', 'cccccccc-1111-0000-0000-000000000008', 0) $$,
+  'P0001',
+  null,
+  'move_doc_node rejects moving a node under its own direct child'
+);
+
+-- Indirect cycle: I under its own grandchild K, via move_doc_node. For any
+-- indirect cycle the subtree-height cap check fires first and rejects the
+-- move before the cycle-triggering UPDATE ever runs -- structurally
+-- inevitable (moving a subtree of height >= 2 under something already 2+
+-- levels inside that same subtree always overshoots depth 3) -- so
+-- move_doc_node correctly rejects it, just via the cap's error path.
+select throws_ok(
+  $$ select move_doc_node('cccccccc-1111-0000-0000-000000000009', 'cccccccc-1111-0000-0000-00000000000b', 0) $$,
+  'P0001',
+  null,
+  'move_doc_node rejects an indirect cycle (I under its own grandchild K)'
+);
+
+-- The prevent_doc_node_cycle trigger itself, isolated from move_doc_node's
+-- cap check via a raw UPDATE (which has no cap logic at all) -- proves the
+-- trigger independently catches indirect cycles, not just direct ones.
+select throws_ok(
+  $$ update public.doc_nodes set parent_id = 'cccccccc-1111-0000-0000-00000000000b' where id = 'cccccccc-1111-0000-0000-000000000009' $$,
+  'P0001',
+  'Cannot move node cccccccc-1111-0000-0000-000000000009 under its own descendant',
+  'prevent_doc_node_cycle trigger itself rejects an indirect cycle independent of move_doc_node'
+);
+
+-- reorder_doc_children: Q/R/S start at positions 50/5/20 (arbitrary, as the
+-- importer leaves them) -- reordering to [S, Q, R] must produce contiguous
+-- 0/1/2 in exactly that order, not just "some" contiguous assignment.
+select reorder_doc_children(
+  'cccccccc-1111-0000-0000-00000000000c',
+  array['cccccccc-1111-0000-0000-00000000000f', 'cccccccc-1111-0000-0000-00000000000d', 'cccccccc-1111-0000-0000-00000000000e']::uuid[]
+);
+select is(
+  (select array_agg(slug order by position) from public.doc_nodes where parent_id = 'cccccccc-1111-0000-0000-00000000000c'),
+  array['mb-s', 'mb-q', 'mb-r'],
+  'reorder_doc_children rewrites positions to contiguous 0..n-1 in the given order'
+);
+
+-- ---------------------------------------------------------------------------
+-- M4b Part 3: create_doc_node -- permission, depth cascade, the depth-3 cap
+-- rejection (clear message, not a silent no-op), and sibling-slug uniqueness.
+-- ---------------------------------------------------------------------------
+
+select pg_temp.act_as('22222222-2222-2222-2222-222222222222', 'editor');
+
+-- A chain down to depth 3, to exercise the cap.
+insert into public.doc_nodes (id, parent_id, slug, title, kind, status, position) values
+  ('cccccccc-2222-0000-0000-000000000001', null, 'cn-root', 'CN Root', 'section', 'published', 200),
+  ('cccccccc-2222-0000-0000-000000000002', 'cccccccc-2222-0000-0000-000000000001', 'cn-lvl1', 'CN Lvl1', 'section', 'published', 0),
+  ('cccccccc-2222-0000-0000-000000000003', 'cccccccc-2222-0000-0000-000000000002', 'cn-lvl2', 'CN Lvl2', 'section', 'published', 0),
+  ('cccccccc-2222-0000-0000-000000000004', 'cccccccc-2222-0000-0000-000000000003', 'cn-lvl3', 'CN Lvl3', 'page', 'published', 0);
+
+select lives_ok(
+  $$ select create_doc_node(null, 'New Root', 'new-root-cn', 'section') $$,
+  'editor can create a new root section'
+);
+select is(
+  (select json_build_object('depth', depth, 'status', status) from public.doc_nodes where slug = 'new-root-cn' and parent_id is null)::text,
+  json_build_object('depth', 0, 'status', 'draft')::text,
+  'new root: depth 0, starts draft'
+);
+
+with created as (select * from create_doc_node('cccccccc-2222-0000-0000-000000000001', 'New Child', 'new-child-cn', 'page'))
+select is(
+  (select depth from created),
+  1::smallint,
+  'child under a depth-0 parent gets depth 1'
+);
+
+select throws_ok(
+  $$ select create_doc_node('cccccccc-2222-0000-0000-000000000004', 'Too Deep', 'too-deep-cn', 'page') $$,
+  'P0001',
+  null,
+  'creating under a depth-3 node is rejected with a clear explanation, not silently'
+);
+
+select throws_ok(
+  $$ select create_doc_node('cccccccc-2222-0000-0000-000000000001', 'Dup', 'cn-lvl1', 'page') $$,
+  '23505',
+  null,
+  'duplicate sibling slug is rejected by the unique index'
+);
+
+select pg_temp.act_as('11111111-1111-1111-1111-111111111111', 'member');
+select throws_ok(
+  $$ select create_doc_node(null, 'Member Root', 'member-root-cn', 'section') $$,
+  'P0001',
+  'Only editors and admins can create pages',
+  'member cannot create a node'
+);
+
+-- ---------------------------------------------------------------------------
+-- M4b Part 4: get_move_targets -- the "Move to..." picker's data source.
+-- subtree_height() is the single function both move_doc_node's cap check
+-- and this picker call, so the two can never validate differently. Reuses
+-- the exact fixture shape (A->B->C, D->E->F) already proven against
+-- move_doc_node's own allow/reject cases above, so a mismatch here would
+-- mean the picker and the move itself actually disagree.
+-- ---------------------------------------------------------------------------
+
+select pg_temp.act_as('22222222-2222-2222-2222-222222222222', 'editor');
+
+insert into public.doc_nodes (id, parent_id, slug, title, kind, status, position) values
+  ('eeeeeeee-1111-0000-0000-000000000001', null, 'gmt-a', 'GMT A', 'section', 'published', 300),
+  ('eeeeeeee-1111-0000-0000-000000000002', 'eeeeeeee-1111-0000-0000-000000000001', 'gmt-b', 'GMT B', 'section', 'published', 0),
+  ('eeeeeeee-1111-0000-0000-000000000003', 'eeeeeeee-1111-0000-0000-000000000002', 'gmt-c', 'GMT C', 'page', 'published', 0),
+  ('eeeeeeee-1111-0000-0000-000000000004', null, 'gmt-d', 'GMT D', 'section', 'published', 301),
+  ('eeeeeeee-1111-0000-0000-000000000005', 'eeeeeeee-1111-0000-0000-000000000004', 'gmt-e', 'GMT E', 'section', 'published', 0),
+  ('eeeeeeee-1111-0000-0000-000000000006', 'eeeeeeee-1111-0000-0000-000000000005', 'gmt-f', 'GMT F', 'page', 'published', 0);
+
+select is(
+  (select count(*)::int from get_move_targets('eeeeeeee-1111-0000-0000-000000000001')
+   where id in ('eeeeeeee-1111-0000-0000-000000000001','eeeeeeee-1111-0000-0000-000000000002','eeeeeeee-1111-0000-0000-000000000003')),
+  0,
+  'get_move_targets excludes the moved node''s own subtree entirely'
+);
+select is(
+  (select is_valid from get_move_targets('eeeeeeee-1111-0000-0000-000000000001') where id = 'eeeeeeee-1111-0000-0000-000000000004'),
+  true,
+  'get_move_targets: D (depth0) is valid for A (subtree_height=2), exactly at cap'
+);
+select is(
+  (select is_valid from get_move_targets('eeeeeeee-1111-0000-0000-000000000001') where id = 'eeeeeeee-1111-0000-0000-000000000005'),
+  false,
+  'get_move_targets: E (depth1) is invalid for A (subtree_height=2), one past cap'
+);
+select isnt(
+  (select reason from get_move_targets('eeeeeeee-1111-0000-0000-000000000001') where id = 'eeeeeeee-1111-0000-0000-000000000005'),
+  null,
+  'get_move_targets: an invalid target carries a non-null reason'
+);
+select is(
+  (select is_valid from get_move_targets('eeeeeeee-1111-0000-0000-000000000002') where id = 'eeeeeeee-1111-0000-0000-000000000006'),
+  false,
+  'get_move_targets: F (depth2) is invalid for B (subtree_height=1) -- agrees with move_doc_node''s own rejected case'
+);
+select is(
+  (select is_valid from get_move_targets('eeeeeeee-1111-0000-0000-000000000002') where id = 'eeeeeeee-1111-0000-0000-000000000005'),
+  true,
+  'get_move_targets: E (depth1) is valid for B (subtree_height=1) -- agrees with move_doc_node''s own allowed case'
+);
+
+select pg_temp.act_as('11111111-1111-1111-1111-111111111111', 'member');
+select throws_ok(
+  $$ select * from get_move_targets('eeeeeeee-1111-0000-0000-000000000001') $$,
+  'P0001',
+  'Only editors and admins can move nodes',
+  'member cannot call get_move_targets'
 );
 
 select * from finish();
